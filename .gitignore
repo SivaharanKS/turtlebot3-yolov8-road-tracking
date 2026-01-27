@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# Videos, datasets, training outputs
+*.avi
+*.mp4
+runs/
+datasets/
+
+# catkin
+build/
+devel/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/

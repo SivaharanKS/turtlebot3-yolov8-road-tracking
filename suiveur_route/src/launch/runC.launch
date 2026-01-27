@@ -1,0 +1,6 @@
+<launch>
+    
+    <param name="freq_control" value="10"/>
+    <node pkg="suiveur_route" name="course_node" type="course.py" cwd="node" output="screen"></node>
+    
+</launch>
