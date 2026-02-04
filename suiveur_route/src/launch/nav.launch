@@ -1,0 +1,10 @@
+<launch>
+    
+    <param name="freq_control" value="10"/>
+
+    <!-- suiveur ball nodes -->
+   
+    <node pkg="suiveur_route" name="detecteur_nav" type="DetecteurNavigation.py" cwd="node" output="screen"></node>
+    <node pkg="suiveur_route" name="controleur_nav" type="ControleurNavigation.py" cwd="node" output="screen"></node>
+
+</launch>
