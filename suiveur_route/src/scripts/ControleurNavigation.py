@@ -2,53 +2,76 @@
 
 import rospy
 from geometry_msgs.msg import Twist, Point
+import time
 
 class ControleurNavigation:
     def __init__(self):
         rospy.init_node('ctl_nav_node')
-        self.rate = rospy.Rate(10) # 10 Hz
+        self.rate = rospy.Rate(10)
        
         self.velocity = Twist()
-        self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size=1)
+        self.pub_vel = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         self.sub_info = rospy.Subscriber('/navigation/info', Point, self.callback_nav)
        
-        # Variables internes
-        self.route_detectee = False
+        # Etats: 0=Rien, 1=Route, 2=Pieton
+        self.etat = 0
         self.erreur_x = 0.0
        
-        # PARAMETRES A REGLER
-        self.VITESSE_AVANCE = 0.15      # Vitesse lineaire (m/s)
-        self.GAIN_ROTATION = 0.002      # Facteur P pour la rotation
-        # Si le robot oscille trop, baisser le GAIN_ROTATION
+        # PARAMETRES
+        self.VITESSE_AVANCE = 0.15
+        self.GAIN_ROTATION = 0.005 # Augmente car image petite (128px)
        
+        # REGLAGE DU TEMPS D'APPROCHE
+        # Combien de temps il avance apres avoir detecte le pieton
+        self.TEMPS_APPROCHE = 2  # Essaye 1.0 ou 2.0 selon la distance voulue
+       
+        # Variable pour eviter de detecter le pieton en boucle infini immediatement
+        self.cooldown_pieton = False
+
     def callback_nav(self, msg):
-        # msg.z contient 1.0 si route detectee, 0.0 sinon
-        if msg.z > 0.5:
-            self.route_detectee = True
-            self.erreur_x = msg.x
-        else:
-            self.route_detectee = False
-            self.erreur_x = 0.0
+        # msg.z contient le code de l'objet vu
+        self.etat = int(msg.z)
+        self.erreur_x = msg.x
 
     def run(self):
         while not rospy.is_shutdown():
             try:
-                if self.route_detectee:
-                    # Logique de suivi de ligne (Proportionnel)
-                    # Si erreur_x est positif (route a droite), on tourne a droite (z negatif)
-                    # Note : verifier le sens de rotation de votre robot
-                    vit_ang = -self.erreur_x * self.GAIN_ROTATION
+                # CAS 1 : PIETON DETECTE
+                if self.etat == 2:
+                    # ETAPE A : Approche finale
+                    rospy.logwarn("PIETON VU -> APPROCHE FINALE...")
                    
-                    # On avance et on tourne
-                    self.drive(self.VITESSE_AVANCE, vit_ang)
-                    rospy.loginfo(f"Suivi Route | Erreur: {self.erreur_x:.1f} | CmdRot: {vit_ang:.3f}")
-               
-                else:
-                    # Pas de route vue -> Arret securite
+                    # On force le robot a avancer tout droit
+                    self.drive(self.VITESSE_AVANCE, 0.0)
+                    self.pub_vel.publish(self.velocity)
+                   
+                    # On le laisse rouler pendant le temps defini
+                    rospy.sleep(self.TEMPS_APPROCHE)
+
+                    # ETAPE B : Arret Total
+                    rospy.logwarn("ACTION : STOP (Attente 3 sec)")
                     self.drive(0.0, 0.0)
-                    rospy.loginfo("Pas de route detectee - Arret")
+                    self.pub_vel.publish(self.velocity)
+                   
+                    # Attente bloquante
+                    rospy.sleep(3.0)
+                   
+                    # Reset pour repartir
+                    rospy.loginfo("Reprise...")
+                    self.etat = 0
                
-                self.publisher.publish(self.velocity)
+                # CAS 2 : ROUTE -> AVANCE
+                elif self.etat == 1:
+                    rospy.loginfo_throttle(1, "ACTION : J'AVANCE (Suivi Route)")
+                    vit_ang = -self.erreur_x * self.GAIN_ROTATION
+                    self.drive(self.VITESSE_AVANCE, vit_ang)
+               
+                # CAS 3 : RIEN -> ATTENTE
+                else:
+                    rospy.loginfo_throttle(1, "ACTION : J'ATTENDS (Recherche Route...)")
+                    self.drive(0.0, 0.0)
+               
+                self.pub_vel.publish(self.velocity)
                 self.rate.sleep()
                
             except rospy.ROSInterruptException:
