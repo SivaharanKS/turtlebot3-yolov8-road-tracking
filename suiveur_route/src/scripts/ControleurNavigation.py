@@ -68,16 +68,24 @@ class ControleurNavigation:
                    
                     # Reset pour repartir
                     rospy.loginfo("Reprise...")
-                    self.etat = 0            
+                    self.etat = 0
                    
-                # CAS 2 : FLECHE DETECTE
+                # CAS 2 : OBSTABLE ROBOT
+                elif self.etat == 4:
+                    # Ici, pas de sleep. On s'arrete juste pour ce cycle.
+                    # Si au prochain cycle le robot est encore la, on reste arrete.
+                    # Si il part, l'etat changera et on repartira.
+                    rospy.logwarn_throttle(1, "OBSTACLE ROBOT DETECTE -> J'ATTENDS...")
+                    self.drive(0.0, 0.0)
+                   
+                # CAS 3 : FLECHE DETECTE
                 elif self.etat == 3:
                     rospy.loginfo_throttle(0.5, "ACTION : VIRAGE DROITE ASSISTE >>>")
                    
                     # On ignore l'erreur X ici pour aller tout droit
                     self.drive(self.VITESSE_LENTE, 0.0)
                
-                # CAS 3 : ROUTE -> AVANCE
+                # CAS 4 : ROUTE -> AVANCE
                 elif self.etat == 1:
                     # Calcul de la rotation normale
                     vit_ang = -self.erreur_x * self.GAIN_ROTATION
@@ -93,7 +101,7 @@ class ControleurNavigation:
                    
                     self.drive(vit_lin, vit_ang)
                
-                # CAS 4 : RIEN -> ATTENTE
+                # CAS 5 : RIEN -> ATTENTE
                 else:
                     rospy.loginfo_throttle(1, "ACTION : J'ATTENDS (Recherche Route...)")
                     self.drive(0.0, 0.0)

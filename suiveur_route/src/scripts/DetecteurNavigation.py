@@ -20,12 +20,14 @@ class DetecteurNavigation:
         self.CLASS_ROUTE = "route-GSnu"
         self.CLASS_PIETON = "pieton"
         self.CLASS_FLECHE = "fleche"
+        self.CLASS_ROBOT = "robot"
        
         # REGLAGE DE LA DISTANCE (Taille en pixels)
         # Image 128x128 = 16384 pixels total.
         # Ajuste cette valeur : Si il s'arrete trop tot, AUGMENTE la valeur.
         self.SEUIL_PIETON_PROCHE = 2000
         self.SEUIL_FLECHE_PROCHE = 350
+        self.SEUIL_ROBOT_PROCHE = 1800
        
         # Anti-Latence : Flag pour ne pas traiter si occupe
         self.processing = False
@@ -92,6 +94,10 @@ class DetecteurNavigation:
                 fleche_center = None
                 fleche_area = 0
                
+                # ROBOT
+                robot_center = None # Variable pour le robot
+                robot_area = 0
+               
                 # Analyse de tous les objets detectes
                 for i, class_id in enumerate(class_ids):
                     name = result.names[class_id]
@@ -119,6 +125,11 @@ class DetecteurNavigation:
                         if area > fleche_area:
                           fleche_area = area
                           fleche_center = (cx, cy)
+                         
+                      elif name == self.CLASS_ROBOT:
+                            if area > robot_area:
+                                robot_area = area
+                                robot_center = (cx, cy)  
                                
                       elif name == self.CLASS_ROUTE:
                         if area > route_area:
@@ -132,6 +143,14 @@ class DetecteurNavigation:
                     # Affiche la taille de la fleche dans le terminal (2 fois par seconde max)
                     rospy.loginfo_throttle(0.5, f"DEBUG FLECHE -> Taille vue: {fleche_area:.0f} (Seuil requis: {self.SEUIL_FLECHE_PROCHE})")
                 # ==========================================================        
+               
+#                # ==========================================================
+#                # ZONE DE DEBUG (POUR CALIBRER LE ROBOT)
+#                # ==========================================================
+#                if robot_center is not None:
+#                    # Affiche la taille vue dans le terminal
+#                    rospy.loginfo_throttle(0.5, f"DEBUG ROBOT -> Taille vue: {robot_area:.0f} (Seuil requis: {self.SEUIL_ROBOT_PROCHE})")
+#                # ==========================================================
 
                 # LOGIQUE DE PRIORITE AVEC DISTANCE (PIXEL)
                
@@ -149,7 +168,19 @@ class DetecteurNavigation:
                     nav_msg.z = 2.0 # STOP
                     found_action = True
                    
-                # PRIORITE 2 : FLECHE
+                # PRIORITE 2 : OBSTACLE ROBOT
+                # Si on voit un robot ET qu'il est proche -> ON S'ARRETE
+                elif not found_action and robot_center is not None and robot_area > self.SEUIL_ROBOT_PROCHE:
+                    cx, cy = robot_center
+                    cv2.circle(final_frame, (cx, cy), 10, (0, 0, 0), -1) # Point Noir
+                    cv2.putText(final_frame, "OBSTACLE", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 2)
+                   
+                    nav_msg.x = float(cx - img_center_x)
+                    nav_msg.y = float(robot_area)
+                    nav_msg.z = 4.0 # ROBOT
+                    found_action = True
+                   
+                # PRIORITE 3 : FLECHE
                 elif not found_action and fleche_center is not None and fleche_area > self.SEUIL_FLECHE_PROCHE:
                     # On voit la fleche ET on est proche
                     cx_f, cy_f = fleche_center
@@ -168,7 +199,7 @@ class DetecteurNavigation:
 
                     found_action = True
 
-                # PRIORITE 3 : ROUTE NORMALE
+                # PRIORITE 4 : ROUTE NORMALE
                 if not found_action and route_center is not None:
                     cx, cy = route_center
                     cv2.circle(final_frame, (cx, cy), 5, (0, 255, 0), -1)
