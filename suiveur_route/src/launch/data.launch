@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="suiveur_route" name="datatest_node" type="Datatest.py" cwd="node" output="screen"></node>
+</launch>
