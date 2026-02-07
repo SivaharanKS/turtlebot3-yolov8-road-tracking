@@ -12,7 +12,7 @@ class ControleurNavigation:
         self.pub_vel = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
         self.sub_info = rospy.Subscriber('/navigation/info', Point, self.callback_nav)
        
-        # Etats: 0=Rien, 1=Route, 2=Pieton, 3=Fleche
+        # Etats: 0=Rien, 1=Route, 2=Pieton, 3=Fleche, 4=Robot
         self.etat = 0
         self.erreur_x = 0.0
        
@@ -33,6 +33,10 @@ class ControleurNavigation:
         # REGLAGE DU TEMPS D'APPROCHE
         # Combien de temps il avance apres avoir detecte le pieton
         self.TEMPS_APPROCHE = 2  # Essaye 1.0 ou 2.0 selon la distance voulue
+       
+        # PARAMETRES DEMI-TOUR (A CALIBRER)
+        self.VITESSE_ROTATION_180 = 1.0 # Rad/s (assez rapide)
+        self.TEMPS_DEMI_TOUR = 3.5      # Temps pour faire 180 degres (3.14 / 1.0 environ)
        
         # Variable pour eviter de detecter le pieton en boucle infini immediatement
         self.cooldown_pieton = False
@@ -78,14 +82,35 @@ class ControleurNavigation:
                     rospy.logwarn_throttle(1, "OBSTACLE ROBOT DETECTE -> J'ATTENDS...")
                     self.drive(0.0, 0.0)
                    
-                # CAS 3 : FLECHE DETECTE
+                # CAS 3 : DEMI-TOUR
+                elif self.etat == 5:
+                    rospy.logwarn("ACTION : DEMI-TOUR 180 DEGRES >>>")
+                   
+                    # On s'arrete 1 sec pour stabiliser
+                    self.drive(0.0, 0.0)
+                    self.pub_vel.publish(self.velocity)
+                    rospy.sleep(1.0)
+                   
+                    # Rotation sur place (Demi-tour)
+                    self.drive(0.0, self.VITESSE_ROTATION_180)
+                    self.pub_vel.publish(self.velocity)
+                    rospy.sleep(self.TEMPS_DEMI_TOUR)
+                   
+                    # Stop et reprise
+                    self.drive(0.0, 0.0)
+                    self.pub_vel.publish(self.velocity)
+                    rospy.sleep(1.0)
+                   
+                    self.etat = 0 # Retour a la normale
+                   
+                # CAS 4 : FLECHE DETECTE
                 elif self.etat == 3:
                     rospy.loginfo_throttle(0.5, "ACTION : VIRAGE DROITE ASSISTE >>>")
                    
                     # On ignore l'erreur X ici pour aller tout droit
                     self.drive(self.VITESSE_LENTE, 0.0)
                
-                # CAS 4 : ROUTE -> AVANCE
+                # CAS 5 : ROUTE -> AVANCE
                 elif self.etat == 1:
                     # Calcul de la rotation normale
                     vit_ang = -self.erreur_x * self.GAIN_ROTATION
@@ -101,7 +126,7 @@ class ControleurNavigation:
                    
                     self.drive(vit_lin, vit_ang)
                
-                # CAS 5 : RIEN -> ATTENTE
+                # CAS 6 : RIEN -> ATTENTE
                 else:
                     rospy.loginfo_throttle(1, "ACTION : J'ATTENDS (Recherche Route...)")
                     self.drive(0.0, 0.0)

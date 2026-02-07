@@ -22,12 +22,17 @@ class DetecteurNavigation:
         self.CLASS_FLECHE = "fleche"
         self.CLASS_ROBOT = "robot"
        
+        # Noms des fleches demi-tour
+        self.CLASS_FLECHE_R = "fleche_r"     # Fleche simple envers
+        self.CLASS_D_FLECHE_R = "d_fleche_r" # Double fleche envers
+       
         # REGLAGE DE LA DISTANCE (Taille en pixels)
         # Image 128x128 = 16384 pixels total.
         # Ajuste cette valeur : Si il s'arrete trop tot, AUGMENTE la valeur.
         self.SEUIL_PIETON_PROCHE = 2000
         self.SEUIL_FLECHE_PROCHE = 350
         self.SEUIL_ROBOT_PROCHE = 1800
+        self.SEUIL_UTURN_PROCHE = 350 # Seuil pour declencher le demi-tour
        
         # Anti-Latence : Flag pour ne pas traiter si occupe
         self.processing = False
@@ -83,20 +88,24 @@ class DetecteurNavigation:
                
                 # Variables pour stocker
                 # ROUTE
-                route_center = None
+                route_center = None # Variable pour le route
                 route_area = 0
                
                 # PIETON
-                pieton_center = None
+                pieton_center = None # Variable pour le pieton
                 pieton_area = 0
                
                 # FLECHE
-                fleche_center = None
+                fleche_center = None # Variable pour le fleche
                 fleche_area = 0
                
                 # ROBOT
                 robot_center = None # Variable pour le robot
                 robot_area = 0
+               
+                # DEMI-TOUR
+                uturn_center = None # Pour le demi-tour
+                uturn_area = 0
                
                 # Analyse de tous les objets detectes
                 for i, class_id in enumerate(class_ids):
@@ -136,13 +145,19 @@ class DetecteurNavigation:
                           route_area = area
                           route_center = (cx, cy)    
                          
-                # ==========================================================
-                # ZONE DE DEBUG (POUR T'AIDER A REGLER)
-                # ==========================================================
-                if fleche_center is not None:
-                    # Affiche la taille de la fleche dans le terminal (2 fois par seconde max)
-                    rospy.loginfo_throttle(0.5, f"DEBUG FLECHE -> Taille vue: {fleche_area:.0f} (Seuil requis: {self.SEUIL_FLECHE_PROCHE})")
-                # ==========================================================        
+                      # Detection Demi-Tour (On regroupe les deux types de fleches inversees)
+                      elif name == self.CLASS_FLECHE_R or name == self.CLASS_D_FLECHE_R:
+                        if area > uturn_area:
+                          uturn_area = area
+                          uturn_center = (cx, cy)
+                         
+#                # ==========================================================
+#                # ZONE DE DEBUG (POUR T'AIDER A REGLER)
+#                # ==========================================================
+#                if fleche_center is not None:
+#                    # Affiche la taille de la fleche dans le terminal (2 fois par seconde max)
+#                    rospy.loginfo_throttle(0.5, f"DEBUG FLECHE -> Taille vue: {fleche_area:.0f} (Seuil requis: {self.SEUIL_FLECHE_PROCHE})")
+#                # ==========================================================        
                
 #                # ==========================================================
 #                # ZONE DE DEBUG (POUR CALIBRER LE ROBOT)
@@ -151,6 +166,8 @@ class DetecteurNavigation:
 #                    # Affiche la taille vue dans le terminal
 #                    rospy.loginfo_throttle(0.5, f"DEBUG ROBOT -> Taille vue: {robot_area:.0f} (Seuil requis: {self.SEUIL_ROBOT_PROCHE})")
 #                # ==========================================================
+
+
 
                 # LOGIQUE DE PRIORITE AVEC DISTANCE (PIXEL)
                
@@ -180,7 +197,16 @@ class DetecteurNavigation:
                     nav_msg.z = 4.0 # ROBOT
                     found_action = True
                    
-                # PRIORITE 3 : FLECHE
+                # PRIORITE 3 : DEMI-TOUR (180 degres)
+                elif not found_action and uturn_center is not None and uturn_area > self.SEUIL_UTURN_PROCHE:
+                    cx, cy = uturn_center
+                    cv2.circle(final_frame, (cx, cy), 10, (0, 255, 255), -1)
+                    cv2.putText(final_frame, "DEMI-TOUR", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 2)
+                   
+                    nav_msg.z = 5.0 # DEMI-TOUR
+                    found_action = True  
+                   
+                # PRIORITE 4 : FLECHE
                 elif not found_action and fleche_center is not None and fleche_area > self.SEUIL_FLECHE_PROCHE:
                     # On voit la fleche ET on est proche
                     cx_f, cy_f = fleche_center
@@ -199,7 +225,7 @@ class DetecteurNavigation:
 
                     found_action = True
 
-                # PRIORITE 4 : ROUTE NORMALE
+                # PRIORITE 5 : ROUTE NORMALE
                 if not found_action and route_center is not None:
                     cx, cy = route_center
                     cv2.circle(final_frame, (cx, cy), 5, (0, 255, 0), -1)
@@ -217,8 +243,8 @@ class DetecteurNavigation:
             # Decommentez les lignes ci-dessous pour voir l'image
             # =========================================================
            
-            cv2.imshow("Vue Robot", final_frame)
-            cv2.waitKey(1)
+            # cv2.imshow("Vue Robot", final_frame)
+            # cv2.waitKey(1)
 
             # =========================================================
                
